@@ -41,7 +41,12 @@ def next_song():
 
 @bot.event
 async def on_ready():
-    print(f'{client.user} has connected to Discord!')
+    print(f'{bot.user} has connected to Discord!')
+
+
+@bot.command()
+async def gay(message):
+    await message.channel.send('dylans gay')
 
 
 @bot.command()
@@ -68,8 +73,16 @@ async def play(ctx, url):
                 info = ydl.extract_info(url, download=False)
                 song = info['formats'][0]['url']
                 source = await discord.FFmpegOpusAudio.from_probe(song, **ffmpeg_options)
-                voice.play(source)
-                voice.is_playing()
+                if len(queue) == 0 and not voice.is_playing():
+                    voice.play(source, after=lambda e: next_song())
+                else:
+                    queue.append(source)
+                    duration.append(info['duration'] + 10)
+                    await ctx.channel.send(f"{info['title']} added to the queue.")
+                await asyncio.sleep(info['duration'] + 10)
+
+                if not voice.is_playing():
+                    await voice.disconnect()
     else:
         await ctx.channel.send("I'm already connected to a voice channel.")
 
@@ -155,6 +168,18 @@ async def skip(ctx):
     voice = get(ctx.bot.voice_clients, guild=ctx.guild)
     voice.stop()
     next_song()
+
+
+@bot.command()
+async def commands(ctx):
+    embed = discord.Embed(title='Commands', description='~play {Direct Link to Youtube} - Plays direct link from YouTube\n'\
+                                                        '~search {song name} - If more than one band has song name use band name as well\n'\
+                                                        '~skip - Skips current song and plays next in queue\n'\
+                                                        '~disconnect - Removes bot from voice channel\n'\
+                                                        '~pause - Pauses current song\n'\
+                                                        '~resume - Continues song\n'\
+                                                        '~stop - Stops music and disconnects bot')
+    await ctx.channel.send(embed=embed)
 
 
 bot.run(TOKEN)
