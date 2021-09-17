@@ -22,10 +22,48 @@ queue = {}
 duration = {}
 
 
+async def player(ctx, song_link):
+    voice = get(ctx.bot.voice_clients, guild=ctx.guild)
+    try:
+        user_channel = ctx.author.voice.channel
+    except AttributeError:
+        user_channel = None
+    if user_channel is None:
+        await ctx.channel.send('Please join a voice channel')
+    else:
+        try:
+            voice = await user_channel.connect()
+        except ClientException:
+            pass
+    ydl_options = {'format': 'bestaudio', 'noplaylist': 'True',
+                   'postprocessors': [
+                       {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192', }]}
+    ffmpeg_options = {
+        'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
+
+    with yt(ydl_options) as ydl:
+        info = ydl.extract_info(song_link, download=False)
+        song_link = info['formats'][0]['url']
+        source = await discord.FFmpegOpusAudio.from_probe(song_link, **ffmpeg_options)
+        if ctx.message.guild.id not in queue and ctx.message.guild.id not in duration:
+            queue[ctx.message.guild.id] = []
+            duration[ctx.message.guild.id] = []
+        if len(queue[ctx.message.guild.id]) == 0 and not voice.is_playing():
+            voice.play(source, after=lambda e: next_song(ctx))
+        else:
+            queue[ctx.message.guild.id].append(source)
+            duration[ctx.message.guild.id].append(info['duration'] + 10)
+            await ctx.channel.send(f"{info['title']} added to the queue.")
+
+        await asyncio.sleep(info['duration'] + 10)
+        if not voice.is_playing():
+            await voice.disconnect()
+            
+
 def next_song(ctx):
     voice = get(ctx.bot.voice_clients, guild=ctx.guild)
-    voice.play(queue[ctx.message.guild.id][0], after=lambda e: next_song(ctx))
     try:
+        voice.play(queue[ctx.message.guild.id][0], after=lambda e: next_song(ctx))
         del queue[ctx.message.guild.id][0]
         time.sleep(duration[ctx.message.guild.id][0])
         del duration[ctx.message.guild.id][0]
@@ -86,44 +124,6 @@ async def disconnect(ctx):
         await ctx.voice_client.disconnect()
     except AttributeError:
         await ctx.channel.send("I'm not in a channel.")
-
-
-async def player(ctx, song_link):
-    voice = get(ctx.bot.voice_clients, guild=ctx.guild)
-    try:
-        user_channel = ctx.author.voice.channel
-    except AttributeError:
-        user_channel = None
-    if user_channel is None:
-        await ctx.channel.send('Please join a voice channel')
-    else:
-        try:
-            voice = await user_channel.connect()
-        except ClientException:
-            pass
-    ydl_options = {'format': 'bestaudio', 'noplaylist': 'True',
-                   'postprocessors': [
-                       {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192', }]}
-    ffmpeg_options = {
-        'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
-
-    with yt(ydl_options) as ydl:
-        info = ydl.extract_info(song_link, download=False)
-        song_link = info['formats'][0]['url']
-        source = await discord.FFmpegOpusAudio.from_probe(song_link, **ffmpeg_options)
-        if ctx.message.guild.id not in queue and ctx.message.guild.id not in duration:
-            queue[ctx.message.guild.id] = []
-            duration[ctx.message.guild.id] = []
-        if len(queue[ctx.message.guild.id]) == 0 and not voice.is_playing():
-            voice.play(source, after=lambda e: next_song(ctx))
-        else:
-            queue[ctx.message.guild.id].append(source)
-            duration[ctx.message.guild.id].append(info['duration'] + 10)
-            await ctx.channel.send(f"{info['title']} added to the queue.")
-
-        await asyncio.sleep(info['duration'] + 10)
-        if not voice.is_playing():
-            await voice.disconnect()
 
 
 @bot.command()
