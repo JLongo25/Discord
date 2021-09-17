@@ -79,11 +79,6 @@ async def on_ready():
 
 
 @bot.command()
-async def gay(message):
-    await message.channel.send('dylans gay')
-
-
-@bot.command()
 async def play(ctx, url):
     voice = get(ctx.bot.voice_clients, guild=ctx.guild)
     if voice is None or not voice.is_playing():
