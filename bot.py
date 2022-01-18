@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3.9
+#!/usr/bin/python3
 # nohup ~/bot.py &
 
 import os
@@ -6,9 +6,13 @@ import discord
 from dotenv import load_dotenv
 from discord.ext import commands
 from discord.ext.commands.errors import ClientException
-from youtube_dl import YoutubeDL as yt
+from yt_dlp import YoutubeDL as yt
 from discord.utils import get
 from urllib.request import urlopen
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import re
 import asyncio
 
@@ -38,19 +42,20 @@ async def player(ctx, song_link):
             pass
     ydl_options = {'format': 'bestaudio', 'noplaylist': 'True',
                    'postprocessors': [
-                       {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192', }],
-                   'youtube_include_dash_manifest': False}
+                       {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192', }],'youtube_include_dash_manifest': False}
     ffmpeg_options = {
         'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
-
     with yt(ydl_options) as ydl:
         info = ydl.extract_info(song_link, download=False)
-        song_link = info['formats'][0]['url']
+        for i in range(len(info['formats'])):
+            if '.googlevideo.com' in info['formats'][i]['url']:
+                song_link = info['formats'][i]['url']
+                break
         source = await discord.FFmpegOpusAudio.from_probe(song_link, **ffmpeg_options)
         if ctx.message.guild.id not in queue_list and ctx.message.guild.id:
             queue_list[ctx.message.guild.id] = []
             list_queue[ctx.message.guild.id] = []
-        if len(queue_list[ctx.message.guild.id]) == 0 and not voice.is_playing():
+        if not voice.is_playing():
             voice.play(source, after=lambda e: next_song(ctx))
             await ctx.channel.send(f"Playing: {info['title']}")
         else:
@@ -66,7 +71,7 @@ async def player(ctx, song_link):
 async def wait(ctx):
     voice = get(ctx.bot.voice_clients, guild=ctx.guild)
     await asyncio.sleep(180)
-    if voice.not_playing():
+    if not voice.is_playing():
         await voice.disconnect()
 
 
@@ -87,7 +92,12 @@ def next_song(ctx):
 @bot.event
 async def on_ready():
     print(f'{bot.user} has connected to Discord!')
-    
+
+
+@bot.command()
+async def gay(message):
+    await message.channel.send('dylans gay')
+
 
 @bot.command()
 async def play(ctx, url):
@@ -140,6 +150,47 @@ async def search(ctx, *, song):
     song_ids = re.findall(r"watch\?v=(\S{11})", html.read().decode())
     song_link = f'https://www.youtube.com/watch?v={song_ids[0]}'
     await player(ctx, song_link)
+
+
+@bot.command()
+async def playlist(ctx, *, playlist_link):
+    # Open Google Chrome
+    op = webdriver.ChromeOptions()
+    op.add_argument('--headless')
+    driver = webdriver.Chrome('/home/ec2-user/chromedriver', options=op)
+
+    ydl_options = {'format': 'bestaudio', 'noplaylist': 'True',
+                   'postprocessors': [
+                       {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192', }],
+                   'youtube_include_dash_manifest': False, 'nocheckcertificate': True}
+    ffmpeg_options = {
+        'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
+    driver.get(playlist_link)
+    driver_wait = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.ID, 'playlist-items')))
+    x = driver.find_elements(By.CSS_SELECTOR, ".yt-simple-endpoint.style-scope.ytd-playlist-panel-video-renderer")
+    song_link_list = [x[i].get_attribute('href') for i in range(len(x))]
+    for c in range(len(song_link_list)):
+        with yt(ydl_options) as ydl:
+            info = ydl.extract_info(song_link_list[c], download=False)
+            for i in range(len(info['formats'])):
+                if '.googlevideo.com' in info['formats'][i]['url']:
+                    song_link_extract = info['formats'][i]['url']
+                    break
+            source = await discord.FFmpegOpusAudio.from_probe(song_link_extract, **ffmpeg_options)
+            if ctx.message.guild.id not in queue_list and ctx.message.guild.id:
+                queue_list[ctx.message.guild.id] = []
+                list_queue[ctx.message.guild.id] = []
+            else:
+                if c == 0:
+                    pass
+                else:
+                    queue_list[ctx.message.guild.id].append(source)
+                    list_queue[ctx.message.guild.id].append(info['title'])
+                    await ctx.channel.send(f"{info['title']} added to the queue.")
+        if c == 9:
+            break
+    driver.quit()
+    await player(ctx, song_link_list[0])
 
 
 @bot.command()
